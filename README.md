@@ -52,7 +52,7 @@ Other endpoints:
 |---|---|
 | `GET /credits/{credit_id}` | One credit and its status |
 | `GET /users/{user_id}/credits` | The user's credits, newest first (up to 100) |
-| `GET /metrics` | Credit counts by status, and the number of users |
+| `GET /metrics` | Credit counts by status, the number of users, and how long the oldest unprocessed credit has waited |
 | `GET /health` | `200` if the API can reach MongoDB |
 
 ## Commands
