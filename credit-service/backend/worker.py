@@ -18,9 +18,13 @@ def process_credit(credit_id: str) -> str:
     user_id = credit["user_id"]
     amount = credit["amount"]
 
-    user_update = {"$inc": {"balance": amount}, "$set": {"status": Status.PROCESSED.value}}
+    user_update = {
+        "$inc": {"balance": amount},
+        "$set": {"status": Status.PROCESSED.value},
+        "$push": {"applied_credits": credit_id},
+    }
 
-    db.users.update_one({"user_id": user_id}, user_update)
+    db.users.update_one({"user_id": user_id, "applied_credits": {"$ne": credit_id}}, user_update)
 
     db.credits.update_one({"_id": credit_id}, {"$set": {"status": Status.PROCESSED.value}})
 
