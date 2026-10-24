@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 
@@ -10,6 +11,8 @@ from worker import process_credit
 
 app = FastAPI()
 db = AsyncMongoClient(settings.mongo_url)[settings.mongo_db]
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 @app.post("/credits", status_code=202, response_model=CreditAccepted)
@@ -27,6 +30,7 @@ async def create_credit(payload: CreditRequest):
             "created_at": time.time(),
         }
     )
+    logger.info("credit %s created for user %s with amount %s", credit_id, user_id, amount)
 
     await db.users.update_one(
         {"user_id": user_id},
@@ -38,6 +42,7 @@ async def create_credit(payload: CreditRequest):
         },
         upsert=True,
     )
+    logger.info("user %s status set to processing", user_id)
 
     task = process_credit.delay(credit_id)
     return CreditAccepted(task_id=task.id, credit_id=credit_id, status=Status.PROCESSING.value)
@@ -47,6 +52,7 @@ async def create_credit(payload: CreditRequest):
 async def get_credit(credit_id: str):
     credit = await db.credits.find_one({"_id": credit_id})
     if not credit:
+        logger.error("Credit with ID %s not found", credit_id)
         raise HTTPException(status_code=404, detail="Credit not found")
     return Credit(**credit)
 
@@ -55,6 +61,7 @@ async def get_credit(credit_id: str):
 async def get_user(user_id: str):
     user = await db.users.find_one({"user_id": user_id})
     if not user:
+        logger.error("User with ID %s not found", user_id)
         raise HTTPException(status_code=404, detail="User not found")
     return User(**user)
 
