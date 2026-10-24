@@ -23,5 +23,5 @@ else
 fi
 echo
 echo "To format everything yourself:"
-echo "  cd credit-service/backend && uv run ruff check --fix . && uv run ruff format ."
+echo "make fmt"
 exit 1

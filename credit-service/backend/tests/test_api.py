@@ -44,8 +44,18 @@ def test_create_credit_keeps_existing_balance(client, db):
         {"user_id": "u_123", "amount": "fifty"},
         {"user_id": "u_123"},
         {"amount": 50},
+        {"user_id": "", "amount": 50},
+        {"user_id": "   ", "amount": 50},
     ],
-    ids=["zero", "negative", "not-a-number", "missing-amount", "missing-user"],
+    ids=[
+        "zero",
+        "negative",
+        "not-a-number",
+        "missing-amount",
+        "missing-user",
+        "empty-user",
+        "whitespace-user",
+    ],
 )
 def test_create_credit_rejects_invalid_requests(client, db, queued, payload):
     response = client.post("/credits", json=payload)
@@ -54,6 +64,16 @@ def test_create_credit_rejects_invalid_requests(client, db, queued, payload):
     assert db.credits.count_documents({}) == 0
     assert db.users.count_documents({}) == 0
     queued.assert_not_called()
+
+
+def test_create_credit_strips_whitespace_from_user_id(client, db):
+    client.post("/credits", json={"user_id": "  u_123  ", "amount": 50})
+    client.post("/credits", json={"user_id": "u_123", "amount": 25})
+
+    # Both requests belong to the same user, not two separate ones.
+    assert db.users.count_documents({}) == 1
+    assert db.users.find_one()["user_id"] == "u_123"
+    assert {c["user_id"] for c in db.credits.find()} == {"u_123"}
 
 
 def test_get_credit_returns_id_not_mongo_id(client):
@@ -73,6 +93,64 @@ def test_get_unknown_credit_returns_404(client):
 
 def test_get_unknown_user_returns_404(client):
     assert client.get("/users/nobody").status_code == 404
+
+
+def test_get_user_credits_returns_only_that_users_credits(client):
+    first = client.post("/credits", json={"user_id": "u_123", "amount": 100}).json()
+    second = client.post("/credits", json={"user_id": "u_123", "amount": 50}).json()
+    client.post("/credits", json={"user_id": "u_456", "amount": 10})
+
+    response = client.get("/users/u_123/credits")
+
+    assert response.status_code == 200
+    credits = response.json()
+    assert {c["id"] for c in credits} == {first["credit_id"], second["credit_id"]}
+    assert {c["amount"] for c in credits} == {100, 50}
+    assert all(c["user_id"] == "u_123" for c in credits)
+    assert all("_id" not in c for c in credits)
+
+
+def test_get_credits_for_unknown_user_returns_404(client):
+    assert client.get("/users/nobody/credits").status_code == 404
+
+
+def test_get_credits_for_user_with_none_returns_empty_list(client, db):
+    db.users.insert_one({"user_id": "u_123", "status": Status.PROCESSED.value})
+
+    response = client.get("/users/u_123/credits")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_user_credits_newest_first(client, db):
+    db.users.insert_one({"user_id": "u_123"})
+    db.credits.insert_many(
+        [
+            {"_id": "old", "user_id": "u_123", "amount": 1, "created_at": 100.0},
+            {"_id": "new", "user_id": "u_123", "amount": 2, "created_at": 300.0},
+            {"_id": "mid", "user_id": "u_123", "amount": 3, "created_at": 200.0},
+        ]
+    )
+
+    ids = [c["id"] for c in client.get("/users/u_123/credits").json()]
+
+    assert ids == ["new", "mid", "old"]
+
+
+def test_get_user_credits_returns_at_most_100(client, db):
+    db.users.insert_one({"user_id": "u_123"})
+    db.credits.insert_many(
+        [
+            {"_id": f"c{i}", "user_id": "u_123", "amount": 1, "created_at": float(i)}
+            for i in range(101)
+        ]
+    )
+
+    credits = client.get("/users/u_123/credits").json()
+
+    assert len(credits) == 100
+    assert credits[0]["id"] == "c100"
 
 
 def test_metrics_counts_credits_by_status(client, db):

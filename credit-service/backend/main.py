@@ -52,16 +52,27 @@ async def create_credit(payload: CreditRequest):
 async def get_credit(credit_id: str):
     credit = await db.credits.find_one({"_id": credit_id})
     if not credit:
-        logger.error("Credit with ID %s not found", credit_id)
+        logger.warning("Credit with ID %s not found", credit_id)
         raise HTTPException(status_code=404, detail="Credit not found")
     return Credit(**credit)
+
+
+@app.get("/users/{user_id}/credits", response_model=list[Credit])
+async def get_user_credits(user_id: str):
+    if not await db.users.find_one({"user_id": user_id}):
+        logger.warning("User with ID %s not found", user_id)
+        raise HTTPException(status_code=404, detail="User not found")
+
+    credits_cursor = db.credits.find({"user_id": user_id}).limit(100).sort("created_at", -1)
+    credits = [Credit(**credit) async for credit in credits_cursor]
+    return credits
 
 
 @app.get("/users/{user_id}", response_model=User)
 async def get_user(user_id: str):
     user = await db.users.find_one({"user_id": user_id})
     if not user:
-        logger.error("User with ID %s not found", user_id)
+        logger.warning("User with ID %s not found", user_id)
         raise HTTPException(status_code=404, detail="User not found")
     return User(**user)
 
