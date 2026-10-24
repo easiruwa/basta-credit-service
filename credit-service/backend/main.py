@@ -53,3 +53,22 @@ async def get_user(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return User(**user)
+
+
+@app.get("/health")
+async def health_check():
+    return await db.command("ping")
+
+@app.get("/metrics")
+async def metrics():
+    cursor = await db.credits.aggregate([{"$group": {"_id": "$status", "count": {"$sum": 1}}}])
+    counts = {row["_id"]: row["count"] async for row in cursor}
+    total_users = await db.users.count_documents({})
+
+    return {
+        "total_credits": sum(counts.values()),
+        "processing_credits": counts.get(Status.PROCESSING.value, 0),
+        "completed_credits": counts.get(Status.PROCESSED.value, 0),
+        "failed_credits": counts.get(Status.FAILED.value, 0),
+        "total_users": total_users
+    }

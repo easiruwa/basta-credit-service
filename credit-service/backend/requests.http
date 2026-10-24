@@ -9,3 +9,19 @@ Content-Type: application/json
 
 ### Check the user
 GET http://localhost:8000/users/u_123
+
+### Try posting a negative credit
+POST http://localhost:8000/credits
+Content-Type: application/json
+
+{
+  "user_id": "u_abc",
+  "amount": -450
+}
+
+### Check the user
+GET http://localhost:8000/users/u_abc
+
+
+### check metrics
+GET http://localhost:8000/metrics
