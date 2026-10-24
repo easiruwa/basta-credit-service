@@ -74,11 +74,13 @@ def test_get_unknown_user_returns_404(client):
 
 
 def test_metrics_counts_credits_by_status(client, db):
-    db.credits.insert_many([
-        {"_id": "c1", "status": Status.PROCESSED.value},
-        {"_id": "c2", "status": Status.PROCESSED.value},
-        {"_id": "c3", "status": Status.PROCESSING.value},
-    ])
+    db.credits.insert_many(
+        [
+            {"_id": "c1", "status": Status.PROCESSED.value},
+            {"_id": "c2", "status": Status.PROCESSED.value},
+            {"_id": "c3", "status": Status.PROCESSING.value},
+        ]
+    )
     db.users.insert_one({"user_id": "u_123"})
 
     assert client.get("/metrics").json() == {

@@ -5,6 +5,7 @@ but use a separate database, so they never touch the app's data. Celery isn't
 needed: API tests replace the task's `.delay()` with a mock, and worker tests
 call the task function directly.
 """
+
 import os
 from unittest.mock import MagicMock
 

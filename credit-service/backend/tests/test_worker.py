@@ -6,12 +6,14 @@ from worker import process_credit
 
 def add_credit(db, credit_id, user_id, amount):
     """Sets up the state the API leaves behind before queuing a task."""
-    db.credits.insert_one({
-        "_id": credit_id,
-        "user_id": user_id,
-        "amount": amount,
-        "status": Status.PROCESSING.value,
-    })
+    db.credits.insert_one(
+        {
+            "_id": credit_id,
+            "user_id": user_id,
+            "amount": amount,
+            "status": Status.PROCESSING.value,
+        }
+    )
     db.users.update_one(
         {"user_id": user_id},
         {"$set": {"status": Status.PROCESSING.value}},

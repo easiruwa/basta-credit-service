@@ -1,11 +1,12 @@
 import time
 import uuid
+
 from fastapi import FastAPI, HTTPException
 from pymongo import AsyncMongoClient
-from config import settings
-from worker import process_credit
-from models import CreditRequest, Status, User, Credit
 
+from config import settings
+from models import Credit, CreditRequest, Status, User
+from worker import process_credit
 
 app = FastAPI()
 db = AsyncMongoClient(settings.mongo_url)[settings.mongo_db]
@@ -16,24 +17,27 @@ async def create_credit(payload: CreditRequest):
     credit_id = str(uuid.uuid4())
     user_id = payload.user_id
     amount = payload.amount
-    
-    await db.credits.insert_one({
-        "_id": credit_id, 
-        "user_id": user_id,
-        "amount": amount,
-        "status": Status.PROCESSING.value, 
-        "created_at": time.time()})
 
-    await db.users.update_one({
-        "user_id": user_id
-    }, {
-        "$set": {
-            "status": Status.PROCESSING.value, 
-        },
-        "$setOnInsert": {
-            "created_at":  time.time()
+    await db.credits.insert_one(
+        {
+            "_id": credit_id,
+            "user_id": user_id,
+            "amount": amount,
+            "status": Status.PROCESSING.value,
+            "created_at": time.time(),
         }
-    }, upsert=True)
+    )
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "status": Status.PROCESSING.value,
+            },
+            "$setOnInsert": {"created_at": time.time()},
+        },
+        upsert=True,
+    )
 
     process_credit.delay(credit_id)
     return {"id": credit_id, "status": Status.PROCESSING.value}
@@ -59,6 +63,7 @@ async def get_user(user_id: str):
 async def health_check():
     return await db.command("ping")
 
+
 @app.get("/metrics")
 async def metrics():
     cursor = await db.credits.aggregate([{"$group": {"_id": "$status", "count": {"$sum": 1}}}])
@@ -70,5 +75,5 @@ async def metrics():
         "processing_credits": counts.get(Status.PROCESSING.value, 0),
         "completed_credits": counts.get(Status.PROCESSED.value, 0),
         "failed_credits": counts.get(Status.FAILED.value, 0),
-        "total_users": total_users
+        "total_users": total_users,
     }

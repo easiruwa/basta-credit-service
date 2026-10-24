@@ -3,12 +3,13 @@
 Celery can deliver a task more than once (for example with acks_late after a
 worker crash), so process_credit has to be safe to repeat.
 """
+
 import pytest
 
 import worker
 from models import Status
-from worker import process_credit
 from test_worker import add_credit
+from worker import process_credit
 
 
 class CrashOnCreditWrite:
@@ -40,9 +41,11 @@ class _CrashingCollection:
     def __getattr__(self, name):
         method = getattr(self.collection, name)
         if name in CrashOnCreditWrite.WRITE_METHODS and not self.owner.crashed:
+
             def crash(*args, **kwargs):
                 self.owner.crashed = True
                 raise RuntimeError("simulated worker crash")
+
             return crash
         return method
 
