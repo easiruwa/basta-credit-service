@@ -80,6 +80,8 @@ The per-status counts come from a **single aggregation** (`$group` by `status`) 
 
 ### Running locally
 
+A `Makefile` at the repo root wraps the common commands, so a reviewer needs only `make setup`, `make up` and `make check`. Run `make` on its own to list them. `make up` returns only once every service, including the API, passes its health check, so requests sent right afterwards succeed.
+
 The venv and `pyproject.toml` live in `backend/`, so commands run from there, and modules import each other directly (`from config import settings`, not `from backend.config ...`).
 
 ## Known gaps and future work
