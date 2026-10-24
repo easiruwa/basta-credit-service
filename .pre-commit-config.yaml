@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint + format)
+        entry: scripts/ruff-hook.sh
+        language: script
+        types: [python]
+        files: ^credit-service/backend/
