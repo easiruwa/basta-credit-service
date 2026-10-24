@@ -1,0 +1,58 @@
+name: CI
+
+# Run on every push to main and on every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A real MongoDB for the tests, started next to the job. The tests use
+    # their own `credit_test` database, the same as locally.
+    services:
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        # Wait until Mongo accepts connections before the steps start.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: credit-service/backend
+
+    env:
+      # Locally the tests skip when Mongo is down. In CI that would hide a
+      # broken setup behind a green tick, so fail instead.
+      REQUIRE_MONGO: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs uv. It reads backend/.python-version and installs Python 3.12.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # --frozen: fail if uv.lock is out of date with pyproject.toml.
+      # Dev dependencies (pytest, httpx) are included by default.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run tests
+        run: uv run pytest -v
+
+  # Checks the Docker image still builds, so `docker compose up` keeps working
+  # for reviewers.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build credit-service/backend

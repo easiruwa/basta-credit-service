@@ -26,7 +26,11 @@ def mongo_client():
     try:
         client.admin.command("ping")
     except ServerSelectionTimeoutError:
-        pytest.skip(f"MongoDB isn't reachable at {MONGO_URL}. Run `docker compose up -d mongo`.")
+        message = f"MongoDB isn't reachable at {MONGO_URL}. Run `docker compose up -d mongo`."
+        # CI sets REQUIRE_MONGO so a missing database fails the run instead of skipping it.
+        if os.environ.get("REQUIRE_MONGO"):
+            pytest.fail(message)
+        pytest.skip(message)
     yield client
     client.close()
 

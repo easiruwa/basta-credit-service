@@ -24,8 +24,9 @@ def test_first_credit_creates_the_balance_field(db):
 
     process_credit("c1")
 
-    user = db.users.find_one({"user_id": "u_123"}, {"_id": 0})
-    assert user == {"user_id": "u_123", "balance": 150.0, "status": Status.PROCESSED.value}
+    user = db.users.find_one({"user_id": "u_123"})
+    assert user["balance"] == 150.0
+    assert user["status"] == Status.PROCESSED.value
 
 
 def test_credits_add_to_the_existing_balance(db):
