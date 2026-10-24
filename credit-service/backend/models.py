@@ -22,6 +22,6 @@ class User(BaseModel):
 class Credit(BaseModel):
     id: str = Field(alias="_id") 
     user_id: str
-    amount: float
+    amount: float = Field(gt=0)
     status: Status = Status.PROCESSING
     created_at: Optional[float] = None

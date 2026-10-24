@@ -3,8 +3,52 @@ services:
     image: mongo:7
     ports: ["27017:27017"]
     volumes: [mongo-data:/data/db]
+    # Lets other services wait until Mongo accepts connections, not just until
+    # the container has started.
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The API and worker are built from the same image (backend/Dockerfile).
+  # Inside Docker, services reach each other by service name, so the URLs use
+  # "mongo" and "redis" instead of "localhost".
+  api:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    # Overrides the image's default command (which starts the API).
+    command: ["celery", "-A", "worker", "worker", "--loglevel=info"]
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   mongo-data:

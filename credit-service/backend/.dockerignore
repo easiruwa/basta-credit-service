@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Local-only files
+.env
+requests.http
+.python-version
+Dockerfile
+.dockerignore
