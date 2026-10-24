@@ -6,16 +6,36 @@ Design decisions, known gaps, and issues hit while building the service.
 
 ### Data model: a `users` document plus a `credits` ledger
 
-- **`users`** holds one document per user, in the shape the spec asks for: `{user_id, balance, status}`. It answers "what does this user have now?"
+- **`users`** holds one document per user, in the shape the spec asks for: `{user_id, balance, status}`, plus `applied_credits` for idempotency (see below). It answers "what does this user have now?" The `User` response model leaves `applied_credits` out of API responses.
 - **`credits`** holds one document per credit request: `{_id, user_id, amount, status, created_at}`. It answers "what happened to this credit?" It's an audit trail, and it gives the worker a durable record to read from.
 
 The spec only requires `users`. The ledger was added because a balance with no history can't be audited or reconciled. It's also what makes idempotency possible later (see known gaps).
 
 ### Request flow
 
-1. `POST /credits` validates the body, inserts the credit as `processing`, and upserts the user with `status: processing`. It then queues the task and returns `202` with the credit id.
+1. `POST /credits` validates the body, inserts the credit as `processing`, and upserts the user with `status: processing`. It then queues the task and returns `202` with the task id and the credit id.
 2. The worker receives only the `credit_id` and reads the amount and user from Mongo. The database stays the single source of truth, and a task message can't carry a different amount from what was stored.
-3. The worker applies the credit with a single `update_one` on the user (`$inc` balance plus `$set` status), then marks the credit `processed`.
+3. The worker applies the credit with a single `update_one` on the user (`$inc` balance, `$set` status, `$push` the credit id onto `applied_credits`), then marks the credit `processed`.
+
+### Idempotent worker
+
+A credit must be applied exactly once, however many times its task runs. Celery can redeliver a task (for example with `acks_late` after a worker crash), and a crash between the user update and marking the credit `processed` would otherwise credit the user twice on retry.
+
+The worker records each applied credit on the user document, in the same update that changes the balance:
+
+- **Filter:** `{"user_id": ..., "applied_credits": {"$ne": credit_id}}` only matches if this credit hasn't been applied yet.
+- **Update:** `$inc` the balance, `$set` the status, and `$push` the credit id onto `applied_credits`.
+
+MongoDB guarantees a single-document update is atomic, so the check and the credit can't be separated. A repeat run matches nothing and changes nothing, then marks the credit `processed` (which is harmless to repeat). A retry after a crash at any point gives the right result, without transactions.
+
+Alternatives considered:
+
+- **Claim the credit first** (flip `processing` to `applying`, skip if that fails). This only moves the crash window: a crash after the claim but before the `$inc` loses the credit.
+- **A Mongo transaction** around both writes. This is the standard production answer, but transactions need a replica set, and the compose setup runs Mongo standalone.
+
+Trade-off: `applied_credits` grows with every credit, so a very busy user could eventually approach Mongo's 16 MB document limit. At that scale, move to transactions or keep only recent ids.
+
+`tests/test_idempotency.py` covers running a task twice, and a simulated crash between the two writes followed by a retry.
 
 ### Atomic balance updates with `$inc`
 
@@ -32,7 +52,16 @@ The API never writes `balance`. An earlier version `$set` it to `0` on every req
 
 ### What `POST /credits` returns
 
-The spec asks for "a task ID". The endpoint returns the **credit id**, because that's what clients can look up afterwards (`GET /credits/{id}`). The Celery task id is only meaningful inside Celery's result backend.
+The spec asks for "a task ID". The endpoint returns both:
+
+```json
+{"task_id": "…", "credit_id": "…", "status": "processing"}
+```
+
+- **`task_id`** is the Celery task id returned by `.delay()`, which satisfies the spec and identifies the job inside Celery (for example in Flower or the result backend).
+- **`credit_id`** is what clients use to follow the credit afterwards (`GET /credits/{credit_id}`), because the credit's status lives in Mongo.
+
+Both fields are named explicitly, rather than one generic `id`, so clients don't have to guess which is which.
 
 ### Metrics derived from Mongo
 
@@ -55,7 +84,8 @@ The venv and `pyproject.toml` live in `backend/`, so commands run from there, an
 
 ## Known gaps and future work
 
-- **Idempotency.** Celery delivers tasks at least once. If the worker crashes after the `$inc` but before marking the credit `processed`, a retry credits the user twice. Fix: have the worker atomically claim the credit (only proceed if its status is still `processing`), or apply both writes in a Mongo transaction.
+- **`acks_late` not enabled yet.** The worker is now safe to retry, but Celery still uses its default of acknowledging a task before running it, so a worker crash loses the task instead of redelivering it. Next step: `@celery_app.task(acks_late=True)`.
+- **Client retries.** The worker is idempotent, but the API isn't: if a client's `POST /credits` times out and they retry, two separate credits are created. An `Idempotency-Key` header, stored on the credit with a unique index, would let a repeat request return the existing credit (the pattern Stripe's API uses).
 - **Write succeeds, publish fails.** If Mongo accepts the credit but publishing to Redis fails, the credit stays `processing` forever. The outbox pattern, or a sweeper that re-queues stale `processing` credits, would close this.
 - **Per-user status with concurrent credits.** If two credits for one user are in flight, the first to finish sets the user to `processed` while the second is still pending. The per-credit status in `credits` is accurate.
 - **Money as floats.** `0.1 + 0.2 != 0.3`. Production code should use integer cents or `Decimal128`.
@@ -68,7 +98,7 @@ The venv and `pyproject.toml` live in `backend/`, so commands run from there, an
 
 Tests run against a **real MongoDB** (a separate `credit_test` database, dropped after each test) rather than a mock, because the important behaviour is in the Mongo operations themselves (`$inc`, `$setOnInsert`, upserts, the metrics aggregation). A mock would only check that the code calls Mongo, not that the updates are right.
 
-Celery isn't needed. API tests replace `process_credit.delay` with a mock and check what would have been queued, and worker tests call `process_credit(...)` directly as a plain function. `test_flow.py` joins the two: it posts credits, runs whatever the API queued, then checks the user document matches the spec.
+Celery isn't needed. API tests replace `process_credit.delay` with a mock that returns a fake task id, and check what would have been queued. Worker tests call `process_credit(...)` directly as a plain function. The idempotency tests also swap in a stand-in database that crashes on the first write to `credits`, simulating a worker dying between its two writes. `test_flow.py` joins the two: it posts credits, runs whatever the API queued, then checks the user document matches the spec.
 
 ```bash
 docker compose up -d mongo   # from credit-service/

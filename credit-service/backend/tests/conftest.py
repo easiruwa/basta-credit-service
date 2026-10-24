@@ -19,6 +19,7 @@ import worker
 
 MONGO_URL = os.environ.get("TEST_MONGO_URL", "mongodb://localhost:27017")
 TEST_DB = "credit_test"
+FAKE_TASK_ID = "fake-task-id"
 
 
 @pytest.fixture(scope="session")
@@ -56,8 +57,9 @@ def queued(monkeypatch):
     """Replaces process_credit.delay so no message is sent to Redis.
 
     Tests can check what would have been queued with `queued.assert_called_once_with(...)`.
+    Like Celery's real `.delay()`, it returns a result whose `.id` is the task id.
     """
-    mock = MagicMock()
+    mock = MagicMock(return_value=MagicMock(id=FAKE_TASK_ID))
     monkeypatch.setattr(main.process_credit, "delay", mock)
     return mock
 

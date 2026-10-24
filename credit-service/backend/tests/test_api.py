@@ -1,19 +1,21 @@
 import pytest
 
+from conftest import FAKE_TASK_ID
 from models import Status
 
 
-def test_create_credit_returns_202_and_queues_the_task(client, db, queued):
+def test_create_credit_returns_202_with_task_and_credit_ids(client, db, queued):
     response = client.post("/credits", json={"user_id": "u_123", "amount": 50})
 
     assert response.status_code == 202
     body = response.json()
+    assert body["task_id"] == FAKE_TASK_ID
     assert body["status"] == Status.PROCESSING.value
-    queued.assert_called_once_with(body["id"])
+    queued.assert_called_once_with(body["credit_id"])
 
 
 def test_create_credit_stores_credit_and_marks_user_processing(client, db):
-    credit_id = client.post("/credits", json={"user_id": "u_123", "amount": 50}).json()["id"]
+    credit_id = client.post("/credits", json={"user_id": "u_123", "amount": 50}).json()["credit_id"]
 
     credit = db.credits.find_one({"_id": credit_id})
     assert credit["user_id"] == "u_123"
@@ -55,7 +57,7 @@ def test_create_credit_rejects_invalid_requests(client, db, queued, payload):
 
 
 def test_get_credit_returns_id_not_mongo_id(client):
-    credit_id = client.post("/credits", json={"user_id": "u_123", "amount": 50}).json()["id"]
+    credit_id = client.post("/credits", json={"user_id": "u_123", "amount": 50}).json()["credit_id"]
 
     response = client.get(f"/credits/{credit_id}")
 

@@ -27,3 +27,9 @@ class Credit(BaseModel):
     amount: float
     status: Status = Status.PROCESSING
     created_at: float | None = None
+
+
+class CreditAccepted(BaseModel):
+    task_id: str
+    credit_id: str
+    status: Status

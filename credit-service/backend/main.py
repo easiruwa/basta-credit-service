@@ -5,14 +5,14 @@ from fastapi import FastAPI, HTTPException
 from pymongo import AsyncMongoClient
 
 from config import settings
-from models import Credit, CreditRequest, Status, User
+from models import Credit, CreditAccepted, CreditRequest, Status, User
 from worker import process_credit
 
 app = FastAPI()
 db = AsyncMongoClient(settings.mongo_url)[settings.mongo_db]
 
 
-@app.post("/credits", status_code=202)
+@app.post("/credits", status_code=202, response_model=CreditAccepted)
 async def create_credit(payload: CreditRequest):
     credit_id = str(uuid.uuid4())
     user_id = payload.user_id
@@ -39,8 +39,8 @@ async def create_credit(payload: CreditRequest):
         upsert=True,
     )
 
-    process_credit.delay(credit_id)
-    return {"id": credit_id, "status": Status.PROCESSING.value}
+    task = process_credit.delay(credit_id)
+    return CreditAccepted(task_id=task.id, credit_id=credit_id, status=Status.PROCESSING.value)
 
 
 @app.get("/credits/{credit_id}", response_model=Credit)

@@ -30,4 +30,4 @@ target-version = "py311"
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["config", "main", "models", "worker", "test_worker"]
+known-first-party = ["config", "conftest", "main", "models", "worker", "test_worker"]
