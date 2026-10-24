@@ -84,9 +84,25 @@ async def health_check():
 
 @app.get("/metrics")
 async def metrics():
-    cursor = await db.credits.aggregate([{"$group": {"_id": "$status", "count": {"$sum": 1}}}])
-    counts = {row["_id"]: row["count"] async for row in cursor}
+    cursor = await db.credits.aggregate(
+        [
+            {
+                "$group": {
+                    "_id": "$status",
+                    "count": {"$sum": 1},
+                    "oldest_created_at": {"$min": "$created_at"},
+                }
+            }
+        ]
+    )
+    rows = {row["_id"]: row async for row in cursor}
+    counts = {status: row["count"] for status, row in rows.items()}
     total_users = await db.users.count_documents({})
+
+    # How long the oldest unprocessed credit has been waiting. If this keeps growing,
+    # the worker is down or falling behind.
+    oldest_processing = rows.get(Status.PROCESSING.value, {}).get("oldest_created_at")
+    backlog_age = round(time.time() - oldest_processing, 1) if oldest_processing else None
 
     return {
         "total_credits": sum(counts.values()),
@@ -94,4 +110,5 @@ async def metrics():
         "completed_credits": counts.get(Status.PROCESSED.value, 0),
         "failed_credits": counts.get(Status.FAILED.value, 0),
         "total_users": total_users,
+        "oldest_processing_age_seconds": backlog_age,
     }

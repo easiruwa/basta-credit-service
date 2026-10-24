@@ -75,6 +75,8 @@ Both fields have clear names, so nobody has to guess which id is which.
 
 All the status counts come from one aggregation query, so they're taken at the same moment and always add up to the total. The user count is a second query, since it's a different collection.
 
+The same aggregation also finds the oldest `processing` credit, and `/metrics` reports how long it has been waiting (`oldest_processing_age_seconds`, or `null` if nothing is waiting). This is the number to alert on: a few credits in `processing` is normal, but if the oldest one keeps getting older, the worker is down or can't keep up.
+
 ### Docker: one image, two containers
 
 The API and the worker share one image (`backend/Dockerfile`). `docker-compose.yml` starts it twice: once as the API, and once with the command changed to run Celery. Separate containers mean each can restart on its own, logs stay separate, and you can run more workers with `docker compose up --scale worker=3`.
@@ -98,10 +100,8 @@ The API and the worker share one image (`backend/Dockerfile`). `docker-compose.y
 - **Client retries.** If a client's request times out and they send it again, two credits are created. An `Idempotency-Key` header, saved on the credit with a unique index, would let the API return the original credit instead (Stripe's API works this way).
 - **Saved but never queued.** If the credit is saved but sending the task to Redis fails, the credit stays `processing` forever. Fix with the outbox pattern, or a job that re-queues old `processing` credits.
 - **User status with several credits at once.** If two credits for the same user are processing, the first one to finish sets the user to `processed` while the other is still running. Each credit's own status is always correct.
-- **Whitespace in `user_id`.** `"   "` and `" u_123 "` are accepted. The second would create a separate user from `"u_123"`. Next step: strip whitespace before validating.
 - **Money as floats.** `0.1 + 0.2` doesn't equal `0.3` in floating point. Production code should store whole cents or use `Decimal128`.
 - **Indexes.** A unique index on `users.user_id`, and indexes on `credits.user_id` (credit history) and `credits.status` (metrics).
-- **Backlog age in metrics.** `/metrics` doesn't show how long the oldest `processing` credit has been waiting. That's the number to alert on if the worker goes down.
 - **More tests.** Not covered yet: running through a real Celery worker and Redis, and many credits for one user at the same time.
 
 ## Testing
