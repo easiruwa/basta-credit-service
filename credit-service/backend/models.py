@@ -10,7 +10,7 @@ class Status(StrEnum):
 
 
 class CreditRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(min_length=1)
     amount: float = Field(gt=0)
 
 
