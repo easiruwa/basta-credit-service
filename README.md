@@ -51,6 +51,7 @@ Other endpoints:
 | Endpoint | Returns |
 |---|---|
 | `GET /credits/{credit_id}` | One credit and its status |
+| `GET /users/{user_id}/credits` | The user's credits, newest first (up to 100) |
 | `GET /metrics` | Credit counts by status, and the number of users |
 | `GET /health` | `200` if the API can reach MongoDB |
 

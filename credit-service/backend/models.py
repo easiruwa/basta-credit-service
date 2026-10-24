@@ -1,6 +1,7 @@
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class Status(StrEnum):
@@ -10,7 +11,7 @@ class Status(StrEnum):
 
 
 class CreditRequest(BaseModel):
-    user_id: str = Field(min_length=1)
+    user_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] = Field(...)
     amount: float = Field(gt=0)
 
 
