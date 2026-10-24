@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from conftest import FAKE_TASK_ID
@@ -163,10 +165,34 @@ def test_metrics_counts_credits_by_status(client, db):
     )
     db.users.insert_one({"user_id": "u_123"})
 
-    assert client.get("/metrics").json() == {
+    metrics = client.get("/metrics").json()
+    metrics.pop("oldest_processing_age_seconds")
+    assert metrics == {
         "total_credits": 3,
         "processing_credits": 1,
         "completed_credits": 2,
         "failed_credits": 0,
         "total_users": 1,
     }
+
+
+def test_metrics_reports_age_of_oldest_processing_credit(client, db):
+    now = time.time()
+    db.credits.insert_many(
+        [
+            {"_id": "c1", "status": Status.PROCESSING.value, "created_at": now - 120},
+            {"_id": "c2", "status": Status.PROCESSING.value, "created_at": now - 30},
+            # Processed credits don't count, however old they are.
+            {"_id": "c3", "status": Status.PROCESSED.value, "created_at": now - 9999},
+        ]
+    )
+
+    age = client.get("/metrics").json()["oldest_processing_age_seconds"]
+
+    assert 120 <= age < 125
+
+
+def test_metrics_backlog_age_is_null_when_nothing_is_processing(client, db):
+    db.credits.insert_one({"_id": "c1", "status": Status.PROCESSED.value, "created_at": 1.0})
+
+    assert client.get("/metrics").json()["oldest_processing_age_seconds"] is None
