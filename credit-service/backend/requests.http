@@ -1,0 +1,11 @@
+### Create a credit
+POST http://localhost:8000/credits
+Content-Type: application/json
+
+{
+  "user_id": "u_123",
+  "amount": 50
+}
+
+### Check the user
+GET http://localhost:8000/users/u_123
