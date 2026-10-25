@@ -102,7 +102,7 @@ The API and the worker share one image (`backend/Dockerfile`). `docker-compose.y
 - **User status with several credits at once.** If two credits for the same user are processing, the first one to finish sets the user to `processed` while the other is still running. Each credit's own status is always correct.
 - **Money as floats.** `0.1 + 0.2` doesn't equal `0.3` in floating point. Production code should store whole cents or use `Decimal128`.
 - **Indexes.** A unique index on `users.user_id`, and indexes on `credits.user_id` (credit history) and `credits.status` (metrics).
-- **More tests.** Not covered yet: running through a real Celery worker and Redis, and many credits for one user at the same time.
+- **More tests.** Not covered yet: running through a real Celery worker and Redis.
 
 ## Testing
 
@@ -114,6 +114,7 @@ Celery and Redis aren't needed:
 - Worker tests call `process_credit(...)` directly.
 - The idempotency tests use a database wrapper that crashes on the first write to `credits`, to simulate a worker dying halfway through.
 - `test_flow.py` runs the whole thing: post credits, run the queued tasks, check the user matches the spec.
+- `test_concurrency.py` applies 50 credits to one user from 16 threads at once, and again with every credit delivered three times. The balance must come out exact. With a "read the balance, add, write it back" update instead of `$inc`, about 35 of the 50 credits get lost.
 
 Run them with `make test`. Locally, the tests are skipped if Mongo isn't running. In CI they fail instead, so a broken setup can't pass.
 
